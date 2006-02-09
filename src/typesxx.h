@@ -2,7 +2,7 @@
 /* $Id$ */
 
 /*  libtifiles - Ti File Format library, a part of the TiLP project
- *  Copyright (C) 1999-2004  Romain Lievin
+ *  Copyright (C) 1999-2005  Romain Lievin
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,9 +26,11 @@
 #include "types82.h"
 #include "types83.h"
 #include "types83p.h"
+#include "types84p.h"
 #include "types85.h"
 #include "types86.h"
 #include "types89.h"
+#include "types89t.h"
 #include "types92.h"
 #include "types92p.h"
 #include "typesv2.h"

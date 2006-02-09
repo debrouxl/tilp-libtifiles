@@ -2,7 +2,7 @@
 /* $Id$ */
 
 /*  libtifiles - Ti File Format library, a part of the TiLP project
- *  Copyright (C) 1999-2004  Romain Lievin
+ *  Copyright (C) 1999-2005  Romain Lievin
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,15 +24,9 @@
 
 #include "macros.h"
 
-#define MODE_APPS              (1<<11)	// Send a (free) FLASH application
-#define MODE_AMS               (1<<12)	// Send an Operating System (AMS)
+#define PAGE_SIZE	16384	//(= FLASH_PAGE_SIZE)
 
-int read_data_block(FILE * f,
-		    uint16_t * flash_address, uint16_t * flash_page,
-		    uint8_t * data, int mode);
-
-int write_data_block(FILE * f,
-		     uint16_t flash_address, uint16_t flash_page,
-		     uint8_t * data, int mode);
+int hex_block_read(FILE *f, uint16_t *size, uint16_t *addr, uint8_t *type, uint8_t *data, uint16_t *page);
+int hex_block_write(FILE *f, uint16_t size, uint16_t  addr, uint8_t  type, uint8_t *data, uint16_t  page);
 
 #endif

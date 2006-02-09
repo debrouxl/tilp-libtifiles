@@ -2,7 +2,7 @@
 /* $Id$ */
 
 /*  libtifiles - Ti File Format library, a part of the TiLP project
- *  Copyright (C) 1999-2004  Romain Lievin
+ *  Copyright (C) 1999-2005  Romain Lievin
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,68 +23,63 @@
   Variable type ID and file extensions
 */
 
-#include <stdio.h>
+#ifndef DISABLE_TI8X
+
 #include <string.h>
 #include "gettext.h"
-
-#include "export.h"
 #include "types83p.h"
-#include "printl.h"
+#include "logging.h"
 
-#ifdef __WIN32__
-# define strcasecmp _stricmp
-#endif
-
-
-const char *TI83p_CONST[TI83p_MAXTYPES + 1][4] = {
-  {"REAL", "8xn", "Real", N_("Real")},
-  {"LIST", "8xl", "List", N_("List")},
-  {"MAT", "8xm", "Matrix", N_("Matrix")},
-  {"EQU", "8xe", "Equation", N_("Equation")},
-  {"STR", "8xs", "String", N_("String")},
-  {"PRGM", "8xp", "Program", N_("Program")},
-  {"ASM", "8xz", "Asm Program", N_("Asm Program")},
-  {"PIC", "8xi", "Picture", N_("Picture")},
-  {"GDB", "8xg", "GDB", N_("GDB")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"WDW", "8xw", "Window", N_("Window")},
-  {"CPLX", "8xc", "Complex", N_("Complex")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"WDW", "8xw", "Window Setup", N_("Window Setup")},
-  {"ZSTO", "8xz", "Zoom", N_("Zoom")},
-  {"TAB", "8xt", "Table Setup", N_("Table Setup")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"BKUP", "8xb", "Backup", N_("Backup")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"APPV", "8xv", "App Var", N_("App Var")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"GRP", "8x?", "Group Var", N_("Group Var")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"DIR", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"AMS", "8xu", "OS upgrade", N_("OS upgrade")},
-  {"APPL", "8xk", "Application", N_("Application")},
-  {"CERT", "8xq", "Certificate", N_("Certificate")},
-  {"IDLIST", "8xidl", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
-  {"", "8x?", "Unknown", N_("Unknown")},
+const char *TI83p_CONST[TI83p_MAXTYPES + 1][4] = 
+{
+  {"REAL", "8Xn", "Real", N_("Real")},
+  {"LIST", "8Xl", "List", N_("List")},
+  {"MAT", "8Xm", "Matrix", N_("Matrix")},
+  {"EQU", "8Xe", "Equation", N_("Equation")},
+  {"STR", "8Xs", "String", N_("String")},
+  {"PRGM", "8Xp", "Program", N_("Program")},
+  {"ASM", "8Xz", "Asm Program", N_("Asm Program")},
+  {"PIC", "8Xi", "Picture", N_("Picture")},
+  {"GDB", "8Xg", "GDB", N_("GDB")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"WDW", "8Xw", "Window", N_("Window")},
+  {"CPLX", "8Xc", "Complex", N_("Complex")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"WDW", "8Xw", "Window Setup", N_("Window Setup")},
+  {"ZSTO", "8Xz", "Zoom", N_("Zoom")},
+  {"TAB", "8Xt", "Table Setup", N_("Table Setup")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"BKUP", "8Xb", "Backup", N_("Backup")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"APPV", "8Xv", "App Var", N_("App Var")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"GRP", "8X?", "Group Var", N_("Group Var")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"DIR", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"AMS", "8Xu", "OS upgrade", N_("OS upgrade")},
+  {"APPL", "8Xk", "Application", N_("Application")},
+  {"CERT", "8Xq", "Certificate", N_("Certificate")},
+  {"IDLIST", "8Xidl", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
+  {"", "8X?", "Unknown", N_("Unknown")},
 
   {NULL, NULL, NULL},
 };
@@ -92,57 +87,60 @@ const char *TI83p_CONST[TI83p_MAXTYPES + 1][4] = {
 // Return the type corresponding to the value
 const char *ti83p_byte2type(uint8_t data)
 {
-  return (data < TI83p_MAXTYPES) ? TI83p_CONST[data][0] : "";
+	//if(data >= TI83p_MAXTYPES) tifiles_warning(_("typesxx: unknown type (%02x).\n"), data);
+	return (data < TI83p_MAXTYPES) ? TI83p_CONST[data][0] : "";
 }
 
 // Return the value corresponding to the type
 uint8_t ti83p_type2byte(const char *s)
 {
-  int i;
+	int i;
 
-  for (i = 0; i < TI83p_MAXTYPES; i++) {
-    if (!strcmp(TI83p_CONST[i][0], s))
-      break;
-  }
+	for (i = 0; i < TI83p_MAXTYPES; i++) 
+	{
+		if (!strcmp(TI83p_CONST[i][0], s))
+			break;
+	}
 
-  if (i == TI83p_MAXTYPES)
-    printl3(1, _("unknown type. It is a bug. Please report this information.\n"));
+	//if (i == TI83p_MAXTYPES) tifiles_warning(_("ti83p_byte2type: unknown type.\n"));
 
-  return i;
+	return i;
 }
 
 // Return the file extension corresponding to the value
 const char *ti83p_byte2fext(uint8_t data)
 {
-  return (data < TI83p_MAXTYPES) ? TI83p_CONST[data][1] : "8x?";
+	//if(data >= TI83p_MAXTYPES) tifiles_warning(_("typesxx: unknown type (%02x).\n"), data);
+	return (data < TI83p_MAXTYPES) ? TI83p_CONST[data][1] : "8X?";
 }
 
 // Return the value corresponding to the file extension
 uint8_t ti83p_fext2byte(const char *s)
 {
-  int i;
+	int i;
 
-  for (i = 0; i < TI83p_MAXTYPES; i++) {
-    if (!strcasecmp(TI83p_CONST[i][1], s))
-      break;
-  }
+	for (i = 0; i < TI83p_MAXTYPES; i++) 
+	{
+		if (!g_ascii_strcasecmp(TI83p_CONST[i][1], s))
+			break;
+	}
 
-  if (i == TI83p_MAXTYPES)
-    printl3(1, _("unknown type. It is a bug. Please report this information.\n"));
-
+	//if (i == TI83p_MAXTYPES)	tifiles_warning(("ti83p_fext2byte: unknown type.\n"));
   return i;
 }
 
 // Return the descriptive associated with the vartype
 const char *ti83p_byte2desc(uint8_t data)
 {
-  return (data < TI83p_MAXTYPES) ? TI83p_CONST[data][2] : _("Unknown");
+	//if(data >= TI83p_MAXTYPES) tifiles_warning(_("typesxx: unknown type (%02x).\n"), data);
+	return (data < TI83p_MAXTYPES) ? TI83p_CONST[data][2] : _("Unknown");
 }
 
 // Return the icon name associated with the vartype
 const char *ti83p_byte2icon(uint8_t data)
 {
-  return (data < TI83p_MAXTYPES) ? TI83p_CONST[data][3] : "Unknown";
+	//if(data >= TI83p_MAXTYPES) tifiles_warning(_("typesxx: unknown type (%02x).\n"), data);
+	return (data < TI83p_MAXTYPES) ? TI83p_CONST[data][3] : "Unknown";
 }
 
-
+#endif

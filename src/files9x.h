@@ -2,7 +2,7 @@
 /* $Id$ */
 
 /*  libtifiles - Ti File Format library, a part of the TiLP project
- *  Copyright (C) 1999-2004  Romain Lievin
+ *  Copyright (C) 1999-2005  Romain Lievin
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,79 +23,49 @@
 #define __TIFILES_FILES9X_H__
 
 #include "stdints.h"
+#include "tifiles.h"
+
+/* Constants */
+
+//#define DEVICE_TYPE_89  0x98
+//#define DEVICE_TYPE_92P 0x88
 
 /* Structures */
 
-// defined in filesxx.h (common to all calcs)
-typedef TiVarEntry Ti9xVarEntry;
-typedef TiRegular Ti9xRegular;
-
-typedef struct {
-  TicalcType calc_type;
-
-  char comment[41];
-  char rom_version[9];
-  uint8_t type;
-  uint32_t data_length;
-  uint8_t *data_part;
-  uint16_t checksum;
-
-} Ti9xBackup;
-
-typedef struct ti9x_flash Ti9xFlash;
-struct ti9x_flash {
-  TicalcType calc_type;
-
-  uint8_t revision_major;
-  uint8_t revision_minor;
-  uint8_t flags;
-  uint8_t object_type;
-  uint8_t revision_day;
-  uint8_t revision_month;
-  uint16_t revision_year;
-  char name[9];
-  uint8_t device_type;
-  uint8_t data_type;
-  uint32_t data_length;
-  uint8_t *data_part;
-
-  Ti9xFlash *next;
-};
-
-#define DEVICE_TYPE_89  0x98
-#define DEVICE_TYPE_92P 0x88
-// no legal existence, internal use
-//#define DEVICE_TYPE_
+typedef FileContent		Ti9xRegular;
+typedef BackupContent	Ti9xBackup;
+typedef FlashContent	Ti9xFlash;
 
 /* Functions */
 
 // allocating
-TIEXPORT Ti9xRegular *TICALL ti9x_create_regular_content(void);
-TIEXPORT Ti9xBackup *TICALL ti9x_create_backup_content(void);
-TIEXPORT Ti9xFlash *TICALL ti9x_create_flash_content(void);
+Ti9xRegular* ti9x_content_create_regular(void);
+Ti9xBackup*  ti9x_content_create_backup(void);
+Ti9xFlash*   ti9x_content_create_flash(void);
+
 // freeing
-TIEXPORT int TICALL ti9x_free_regular_content(Ti9xRegular * content);
-TIEXPORT int TICALL ti9x_free_backup_content(Ti9xBackup * content);
-TIEXPORT int TICALL ti9x_free_flash_content(Ti9xFlash * content);
+void ti9x_content_free_regular(Ti9xRegular *content);
+void ti9x_content_free_backup(Ti9xBackup *content);
+void ti9x_content_free_flash(Ti9xFlash *content);
+
+// displaying
+int ti9x_content_display_regular(Ti9xRegular *content);
+int ti9x_content_display_backup(Ti9xBackup *content);
+int ti9x_content_display_flash(Ti9xFlash *content);
+
 // reading
-TIEXPORT int TICALL ti9x_read_regular_file(const char *filename,
-					   Ti9xRegular * content);
-TIEXPORT int TICALL ti9x_read_backup_file(const char *filename,
-					  Ti9xBackup * content);
-TIEXPORT int TICALL ti9x_read_flash_file(const char *filename,
-					 Ti9xFlash * content);
+int ti9x_file_read_regular(const char *filename, Ti9xRegular *content);
+int ti9x_file_read_backup(const char *filename, Ti9xBackup *content);
+int ti9x_file_read_flash(const char *filename, Ti9xFlash *content);
+
 // writing
-TIEXPORT int TICALL ti9x_write_regular_file(const char *filename,
-					    Ti9xRegular * content,
-					    char **filename2);
-TIEXPORT int TICALL ti9x_write_backup_file(const char *filename,
-					   Ti9xBackup * content);
-TIEXPORT int TICALL ti9x_write_flash_file(const char *filename,
-					  Ti9xFlash * content);
-//displaying
-TIEXPORT int TICALL ti9x_display_regular_content(Ti9xRegular * content);
-TIEXPORT int TICALL ti9x_display_backup_content(Ti9xBackup * content);
-TIEXPORT int TICALL ti9x_display_flash_content(Ti9xFlash * content);
-TIEXPORT int TICALL ti9x_display_file(const char *filename);
+int ti9x_file_write_regular(const char *filename, Ti9xRegular *content, char **filename2);
+int ti9x_file_write_backup(const char *filename, Ti9xBackup *content);
+int ti9x_file_write_flash(const char *filename, Ti9xFlash *content);
+
+// displaying
+int ti9x_file_display(const char *filename);
+
+int** tifiles_create_table_of_entries(FileContent *content, int *nfolders);
 
 #endif

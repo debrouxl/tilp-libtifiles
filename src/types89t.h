@@ -2,7 +2,7 @@
 /* $Id: types89.h 368 2004-03-22 18:42:08Z roms $ */
 
 /*  libtifiles - Ti File Format library, a part of the TiLP project
- *  Copyright (C) 1999-2004  Romain Lievin
+ *  Copyright (C) 1999-2005  Romain Lievin
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation; either version 2 of the License, or
@@ -44,7 +44,8 @@
 #define TI89t_BKUP 0x1D
 #define TI89t_FDIR 0x1F		// full
 #define TI89t_DIR  TI89t_FDIR	//type
-#define TI89t_ASM  0x21
+#define TI89r_GETCERT 0x20
+#define TI89t_ASM	  0x21
 #define TI89t_IDLIST  0x22
 #define TI89t_AMS     0x23
 #define TI89t_APPL    0x24
@@ -59,12 +60,12 @@
 
 extern const char *TI89t_CONST[TI89t_MAXTYPES + 1][4];
 
-const char *TI89t_byte2type(uint8_t data);
-uint8_t TI89t_type2byte(const char *s);
-const char *TI89t_byte2fext(uint8_t data);
-uint8_t TI89t_fext2byte(const char *s);
+const char *ti89t_byte2type(uint8_t data);
+uint8_t ti89t_type2byte(const char *s);
+const char *ti89t_byte2fext(uint8_t data);
+uint8_t ti89t_fext2byte(const char *s);
 
-const char *TI89t_byte2desc(uint8_t data);
-const char *TI89t_byte2icon(uint8_t data);
+const char *ti89t_byte2desc(uint8_t data);
+const char *ti89t_byte2icon(uint8_t data);
 
 #endif

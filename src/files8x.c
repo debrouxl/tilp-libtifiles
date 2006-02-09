@@ -1,7 +1,7 @@
 /* $Id$ */
 
 /*  libtifiles - Ti File Format library, a part of the TiLP project
- *  Copyright (C) 1999-2004  Romain Lievin
+ *  Copyright (C) 1999-2005  Romain Lievin
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,182 +19,92 @@
  */
 
 /*
-  TI File Format handling routines
-  Calcs: 73/82/83/83+/85/86
+	TI File Format handling routines
+	Calcs: 73/82/83/83+/84+/85/86
 */
 
 /*
-  Thanks to Adrian Mettler <amettler@hmc.edu> for his patch which fixes
-  some TI85/86 file issues (padded, not padded).
+	Thanks to Adrian Mettler <amettler@hmc.edu> for his patch which fixes
+	some TI85/86 file issues (padded, not padded).
 */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
-#include "file_int.h"
-#include "file_err.h"
-#include "file_def.h"
+#include "tifiles.h"
+#include "error.h"
+#include "logging.h"
 #include "typesxx.h"
-#include "filesxx.h"
-#include "misc.h"
+#include "files8x.h"
+#include "rwfile.h"
 #include "intelhex.h"
-#include "trans.h"
-#include "printl.h"
+#include "transcode.h"
 
-static uint8_t fsignature[3] = { 0x1A, 0x0A, 0x00 };
+#ifndef DISABLE_TI8X
 
-static int is_ti8586(TicalcType calc_type)
+/********/
+/* Misc */
+/********/
+
+static uint8_t fsignature85[3] = { 0x1A, 0x0C, 0x00 };	//TI85
+static uint8_t fsignature8x[3] = { 0x1A, 0x0A, 0x00 };	//TI73, 82, 83, 86
+
+
+static int is_ti8586(CalcModel model)
 {
-  return ((calc_type == CALC_TI85) || (calc_type == CALC_TI86));
+  return ((model == CALC_TI85) || (model == CALC_TI86));
 }
 
-static int is_ti83p(TicalcType calc_type)
+static int is_ti83p(CalcModel model)
 {
-  return (calc_type == CALC_TI83P) || (calc_type == CALC_TI84P);
+  return (model == CALC_TI83P) || (model == CALC_TI84P)|| (model == CALC_TI84P_USB);
 }
 
-/**************/
-/* Allocating */
-/**************/
-
-TIEXPORT Ti8xRegular *TICALL ti8x_create_regular_content(void)
+static uint16_t compute_backup_sum(BackupContent* content)
 {
-  Ti8xRegular *content = (Ti8xRegular *) calloc(1, sizeof(Ti8xRegular));
+	uint16_t sum= 0;
 
-  return content;
-}
+  sum += 9;
+  sum += tifiles_checksum((uint8_t *)&(content->data_length1), 2);
+  sum += content->type;
+  sum += tifiles_checksum((uint8_t *)&(content->data_length2), 2);
+  sum += tifiles_checksum((uint8_t *)&(content->data_length3), 2);
+  if (content->model != CALC_TI86)
+    sum += tifiles_checksum((uint8_t *)&(content->mem_address), 2);
+  else
+    sum += tifiles_checksum((uint8_t *)&(content->data_length4), 2);
 
-TIEXPORT Ti8xBackup *TICALL ti8x_create_backup_content(void)
-{
-  Ti8xBackup *content = (Ti8xBackup *) calloc(1, sizeof(Ti8xBackup));
+  sum += tifiles_checksum((uint8_t *)&(content->data_length1), 2);
+  sum += tifiles_checksum(content->data_part1, content->data_length1);
+  sum += tifiles_checksum((uint8_t *)&(content->data_length2), 2);
+  sum += tifiles_checksum(content->data_part2, content->data_length2);
+  sum += tifiles_checksum((uint8_t *)&(content->data_length3), 2);
+  sum += tifiles_checksum(content->data_part3, content->data_length3);
+  sum += tifiles_checksum((uint8_t *)&(content->data_length4), 2);
+  sum += tifiles_checksum(content->data_part4, content->data_length4);
 
-  return content;
-}
-
-TIEXPORT Ti8xFlash *TICALL ti8x_create_flash_content(void)
-{
-  Ti8xFlash *content = (Ti8xFlash *) calloc(1, sizeof(Ti8xFlash));
-
-  return content;
-}
-
-/*************************/
-/* Copying (duplicating) */
-/*************************/
-
-/*
-  Copy an Ti8xVarEntry structure (data included)
-*/
-int ti8x_dup_VarEntry(Ti8xVarEntry * dst, Ti8xVarEntry * src)
-{
-  memcpy(dst, src, sizeof(Ti8xVarEntry));
-
-  dst->data = (uint8_t *) calloc(dst->size, 1);
-  if (dst->data == NULL)
-    return ERR_MALLOC;
-  memcpy(dst->data, src->data, dst->size);
-
-  return 0;
-}
-
-/*
-  Copy an Ti8xRegular structure
-*/
-int ti8x_dup_Regular(Ti8xRegular * dst, Ti8xRegular * src)
-{
-  int i;
-
-  memcpy(dst, src, sizeof(Ti8xRegular));
-
-  dst->entries = (Ti8xVarEntry *) calloc(src->num_entries,
-					 sizeof(Ti8xVarEntry));
-  if (dst->entries == NULL)
-    return ERR_MALLOC;
-
-  for (i = 0; i < src->num_entries; i++)
-    TRY(ti8x_dup_VarEntry(&(dst->entries[i]), &(src->entries[i])));
-
-  return 0;
-}
-
-/*
-  Copy an Ti8xBackup structure
-*/
-int ti8x_dup_Backup(Ti8xBackup * dst, Ti8xBackup * src)
-{
-  memcpy(dst, src, sizeof(Ti8xBackup));
-
-  dst->data_part1 = (uint8_t *) calloc(dst->data_length1, 1);
-  dst->data_part2 = (uint8_t *) calloc(dst->data_length2, 1);
-  dst->data_part3 = (uint8_t *) calloc(dst->data_length3, 1);
-  dst->data_part4 = (uint8_t *) calloc(dst->data_length4, 1);
-
-  if ((dst->data_part1 == NULL) ||
-      (dst->data_part2 == NULL) ||
-      (dst->data_part3 == NULL) || (dst->data_part4 == NULL))
-    return ERR_MALLOC;
-
-  memcpy(dst->data_part1, src->data_part1, dst->data_length1);
-  memcpy(dst->data_part2, src->data_part2, dst->data_length2);
-  memcpy(dst->data_part3, src->data_part3, dst->data_length3);
-  memcpy(dst->data_part4, src->data_part4, dst->data_length4);
-
-  return 0;
-}
-
-/***********/
-/* Freeing */
-/***********/
-
-/*
-  Free the content of a Ti8xRegular structure
-*/
-TIEXPORT int TICALL ti8x_free_regular_content(Ti8xRegular * content)
-{
-  int i;
-
-  for (i = 0; i < content->num_entries; i++) {
-    Ti8xVarEntry *entry = &(content->entries[i]);
-    free(entry->data);
-  }
-  free(content->entries);
-
-  return 0;
-}
-
-/*
-  Same as above
-*/
-TIEXPORT int TICALL ti8x_free_backup_content(Ti8xBackup * content)
-{
-  free(content->data_part1);
-  free(content->data_part2);
-  free(content->data_part3);
-  free(content->data_part4);
-
-  return 0;
-}
-
-TIEXPORT int TICALL ti8x_free_flash_content(Ti8xFlash * content)
-{
-  free(content->pages);
-  return 0;
+  return sum;
 }
 
 /***********/
 /* Reading */
 /***********/
 
-/*
-  Open a file and place its content in a Ti8xRegular structure
-  - filename [in]: a file to read
-  - content [out]: the address of a structure where the file content 
-  will be stored
-  - int [out]: an error code
- */
-TIEXPORT int TICALL ti8x_read_regular_file(const char *filename,
-					   Ti8xRegular * content)
+/**
+ * ti8x_file_read_regular:
+ * @filename: name of single/group file to open.
+ * @content: where to store the file content.
+ *
+ * Load the single/group file into a Ti8xRegular structure.
+ *
+ * Structure content must be freed with #tifiles_content_delete_regular when
+ * no longer used.
+ *
+ * Return value: an error code, 0 otherwise.
+ **/
+int ti8x_file_read_regular(const char *filename, Ti8xRegular *content)
 {
   FILE *f;
   uint16_t tmp = 0x000B;
@@ -202,24 +112,24 @@ TIEXPORT int TICALL ti8x_read_regular_file(const char *filename,
   int i;
   int ti83p_flag = 0;
   uint8_t name_length = 8;	// ti85/86 only
-  uint16_t data_size;
-  uint8_t test_space;
+  uint16_t data_size, sum = 0;
   char signature[9];
+  uint8_t test_pad = 0xff;
+  int padded86 = 0;
 
-  if (!tifiles_is_a_ti_file(filename))
-    return ERR_INVALID_FILE;
-  if (!tifiles_is_a_regular_file(filename))
+  if (!tifiles_file_is_regular(filename))
     return ERR_INVALID_FILE;
 
-  f = fopen(filename, "rb");
-  if (f == NULL) {
-    printl3(0, "Unable to open this file: <%s>\n", filename);
+  f = gfopen(filename, "rb");
+  if (f == NULL) 
+  {
+    tifiles_warning( "Unable to open this file: <%s>\n", filename);
     return ERR_FILE_OPEN;
   }
 
   fread_8_chars(f, signature);
-  content->calc_type = tifiles_signature2calctype(signature);
-  if (content->calc_type == CALC_NONE)
+  content->model = tifiles_signature2calctype(signature);
+  if (content->model == CALC_NONE)
     return ERR_INVALID_FILE;
   fskip(f, 3);
   fread_n_chars(f, 42, content->comment);
@@ -227,7 +137,8 @@ TIEXPORT int TICALL ti8x_read_regular_file(const char *filename,
 
   // search for the number of entries by parsing the whole file
   offset = ftell(f);
-  for (i = 0;; i++) {
+  for (i = 0;; i++) 
+  {
     int current_offset = (int)ftell(f);
     /* We are done finding entries once we reach the end of the data segment
      * as defined in the header.  This works better than magic numbers, as
@@ -235,33 +146,42 @@ TIEXPORT int TICALL ti8x_read_regular_file(const char *filename,
      * transmit correctly with TI's software and with this code.
      *   Adrian Mettler
      */
-    //printf("current_offset: %x, offset + data_size: %x\n",
-    //    current_offset, (uint16_t) offset + data_size);
 	  if (current_offset >= offset + data_size)
 	    break;
 
     fread_word(f, &tmp);
     if (tmp == 0x0D)
       ti83p_flag = !0;		// true TI83+ file (2 extra bytes)
-    //if ((tmp != 0x0B) && (tmp != 0x0C) && (tmp != 0x0D))
-    //break;
-    if (is_ti8586(content->calc_type)) {
-      /* name may follow one of three conventions: padded with zeroes
-       * (most correct, generated by TI's software), padded with null bytes,
-       * or unpadded.  TI's software accepts all three, so we should too.
+	if(content->model == CALC_TI85)
+	{
+		// length &  name with no padding
+		fskip(f, 3);
+		fread_byte(f, &name_length);
+		fskip(f, name_length);
+	}
+    else if(content->model == CALC_TI86) 
+	{
+      /* name may follow one of three conventions: padded with SPC bytes
+       * (most correct, generated by TI's software), padded with NULL bytes,
+       * or unpadded (like TI85).  TI's software accepts all three, so we should too.
        */
        fskip(f, 3);
        fread_byte(f, &name_length);
        fskip(f, name_length);
-       
-       fread_byte(f, &test_space);
-       fskip (f, -1);
-       
-       //printf("test_space: %x at %x\n", test_space, (int)ftell(f));
-       if (test_space == '\0' || test_space == ' ')  // skip padding if padded
-	 fskip(f, 8 - name_length);
+
+	   if(name_length < 8)
+	   {
+		fread_byte(f, &test_pad);
+		fskip(f, -1);
+
+		if((test_pad == ' ') || (test_pad == '\0'))
+		{
+			fskip(f, 8 - name_length);
+			padded86 = !0;
+		}
+	   }
     }
-    else if ((content->calc_type == CALC_TI83P) || (content->calc_type == CALC_TI84P))
+    else if ((content->model == CALC_TI83P) || (content->model == CALC_TI84P) || (content->model == CALC_TI84P_USB))
       fskip(f, 13);
     else
       fskip(f, 11);
@@ -271,81 +191,95 @@ TIEXPORT int TICALL ti8x_read_regular_file(const char *filename,
   fseek(f, offset, SEEK_SET);
 
   content->num_entries = i;
-  content->entries = (Ti8xVarEntry *) calloc(content->num_entries,
-					     sizeof(Ti8xVarEntry));
-  if (content->entries == NULL) {
+  content->entries = calloc(content->num_entries + 1, sizeof(VarEntry*));
+  if (content->entries == NULL) 
+  {
     fclose(f);
     return ERR_MALLOC;
   }
 
-  for (i = 0; i < content->num_entries; i++) {
-    Ti8xVarEntry *entry = &((content->entries)[i]);
+  for (i = 0; i < content->num_entries; i++) 
+  {
+    VarEntry *entry = content->entries[i] = calloc(1, sizeof(VarEntry));
+	uint16_t packet_length;
 
-    fread_word(f, NULL);
-    fread_word(f, (uint16_t *) & (entry->size));
+    fread_word(f, &packet_length);
+    fread_word(f, (uint16_t *)&(entry->size));
     fread_byte(f, &(entry->type));
-    if (is_ti8586(content->calc_type))
+    if (is_ti8586(content->model))
       fread_byte(f, &name_length);
     fread_n_chars(f, name_length, entry->name);
-    tixx_translate_varname(entry->name, entry->trans,
-			   entry->type, content->calc_type);
-    if (is_ti8586(content->calc_type)) {
-      /* Again, compatibility with padded and unpadded files */
-      fread_byte(f, &test_space);
-      fskip (f, -1);
-      
-      if (test_space == '\0' || test_space == ' ')  // skip padding if padded
-	fskip(f, 8 - name_length);
-    }
-    if (ti83p_flag) {
+	if((content->model == CALC_TI86) && padded86)
+		fskip(f, 8 - name_length);
+    if (ti83p_flag) 
+	{
       entry->attr = (fgetc(f) == 0x80 ? ATTRB_ARCHIVED : ATTRB_NONE);
       fgetc(f);
     }
     fread_word(f, NULL);
 
     entry->data = (uint8_t *) calloc(entry->size, 1);
-    if (entry->data == NULL) {
+    if (entry->data == NULL) 
+	{
       fclose(f);
       return ERR_MALLOC;
     }
 
     fread(entry->data, entry->size, 1, f);
+
+	sum += packet_length;
+    sum += tifiles_checksum((uint8_t *)&(entry->size), 2);
+    sum += entry->type;
+    if(is_ti8586(content->model))
+      sum += strlen(entry->name);
+    sum += tifiles_checksum((uint8_t *)entry->name, name_length);
+	if((content->model == CALC_TI86) && padded86)
+		sum += (8 - name_length) * test_pad;
+    sum += tifiles_checksum((uint8_t *)&(entry->size), 2);
+    sum += tifiles_checksum(entry->data, entry->size);
   }
 
   fread_word(f, &(content->checksum));
+
+  //if(sum != content->checksum) 
+//	  return ERR_FILE_CHECKSUM;
 
   fclose(f);
 
   return 0;
 }
 
-/*
-  Open a file and place its content in a structure
-  - filename [in]: a file to read
-  - content [out]: the address of a structure where the file content
-  will be stored
-  - int [out]: an error code
-*/
-TIEXPORT int TICALL ti8x_read_backup_file(const char *filename,
-					  Ti8xBackup * content)
+/**
+ * ti8x_file_read_backup:
+ * @filename: name of backup file to open.
+ * @content: where to store the file content.
+ *
+ * Load the backup file into a Ti8xBackup structure.
+ *
+ * Structure content must be freed with #tifiles_content_delete_backup when
+ * no longer used.
+ *
+ * Return value: an error code, 0 otherwise.
+ **/
+int ti8x_file_read_backup(const char *filename, Ti8xBackup *content)
 {
   FILE *f;
   char signature[9];
+  uint16_t sum;
 
-  if (!tifiles_is_a_ti_file(filename))
-    return ERR_INVALID_FILE;
-  if (!tifiles_is_a_backup_file(filename))
+  if (!tifiles_file_is_backup(filename))
     return ERR_INVALID_FILE;
 
-  f = fopen(filename, "rb");
-  if (f == NULL) {
-    printl3(0, "Unable to open this file: <%s>\n", filename);
+  f = gfopen(filename, "rb");
+  if (f == NULL) 
+  {
+    tifiles_info( "Unable to open this file: <%s>", filename);
     return ERR_FILE_OPEN;
   }
 
   fread_8_chars(f, signature);
-  content->calc_type = tifiles_signature2calctype(signature);
-  if (content->calc_type == CALC_NONE)
+  content->model = tifiles_signature2calctype(signature);
+  if (content->model == CALC_NONE)
     return ERR_INVALID_FILE;
   fskip(f, 3);
   fread_n_chars(f, 42, content->comment);
@@ -357,14 +291,15 @@ TIEXPORT int TICALL ti8x_read_backup_file(const char *filename,
   fread_word(f, &(content->data_length2));
   fread_word(f, &(content->data_length3));
   content->data_length4 = 0;
-  if (content->calc_type != CALC_TI86)
+  if (content->model != CALC_TI86)
     fread_word(f, &(content->mem_address));
   else
     fread_word(f, &(content->data_length4));
 
   fread_word(f, NULL);
   content->data_part1 = (uint8_t *) calloc(content->data_length1, 1);
-  if (content->data_part1 == NULL) {
+  if (content->data_part1 == NULL) 
+  {
     fclose(f);
     return ERR_MALLOC;
   }
@@ -372,7 +307,8 @@ TIEXPORT int TICALL ti8x_read_backup_file(const char *filename,
 
   fread_word(f, NULL);
   content->data_part2 = (uint8_t *) calloc(content->data_length2, 1);
-  if (content->data_part2 == NULL) {
+  if (content->data_part2 == NULL) 
+  {
     fclose(f);
     return ERR_MALLOC;
   }
@@ -382,137 +318,159 @@ TIEXPORT int TICALL ti8x_read_backup_file(const char *filename,
   {
     fread_word(f, NULL);
     content->data_part3 = (uint8_t *) calloc(content->data_length3, 1);
-    if (content->data_part3 == NULL) {
+    if (content->data_part3 == NULL) 
+	{
       fclose(f);
       return ERR_MALLOC;
     }
     fread(content->data_part3, 1, content->data_length3, f);
   }
 
-  if (content->calc_type == CALC_TI86) {
+  if (content->model == CALC_TI86) 
+  {
     fread_word(f, NULL);
     content->data_part4 = (uint8_t *) calloc(content->data_length4, 1);
-    if (content->data_part4 == NULL) {
+    if (content->data_part4 == NULL) 
+	{
       fclose(f);
       return ERR_MALLOC;
     }
     fread(content->data_part4, 1, content->data_length4, f);
-  } else {
+  } 
+  else 
+  {
     content->data_length4 = 0;
     content->data_part4 = NULL;
   }
 
   fread_word(f, &(content->checksum));
+  sum = compute_backup_sum(content);
+
+  if(sum != content->checksum)
+	  return ERR_FILE_CHECKSUM;
 
   fclose(f);
 
   return 0;
 }
 
-TIEXPORT int TICALL ti8x_read_flash_file(const char *filename,
-					 Ti8xFlash * content)
+/**
+ * ti8x_file_read_flash:
+ * @filename: name of flash file to open.
+ * @content: where to store the file content.
+ *
+ * Load the flash file into a #FlashContent structure.
+ *
+ * Structure content must be freed with #tifiles_content_delete_flash when
+ * no longer used.
+ *
+ * Return value: an error code, 0 otherwise.
+ **/
+int ti8x_file_read_flash(const char *filename, Ti8xFlash *head)
 {
-  FILE *f, *file;
-  int i;
-  uint32_t flash_size;
-  uint32_t block_size;
-  int num_blocks;
-  int mask_mode;
-  int ret;
-  uint16_t flash_address;
-  uint16_t flash_page;
-  uint8_t flag = 0x80;
-  uint8_t buf[256];
+  FILE *f;
+  Ti8xFlash *content = head;
+  int i, ret;
   char signature[9];
 
-  if (!tifiles_is_a_ti_file(filename))
+  if (!tifiles_file_is_flash(filename))
     return ERR_INVALID_FILE;
 
-  if (!tifiles_is_a_flash_file(filename))
-    return ERR_INVALID_FILE;
-
-  content->calc_type = tifiles_which_calc_type(filename);
-  f = fopen(filename, "rb");
-  if (f == NULL) {
-    printl3(0, "Unable to open this file: <%s>\n", filename);
+  f = gfopen(filename, "rb");
+  if (f == NULL) 
+  {
+    tifiles_info("Unable to open this file: <%s>", filename);
     return ERR_FILE_OPEN;
   }
-  file = f;
 
-  fread_8_chars(f, signature);
-  if (strcmp(signature, "**TIFL**"))
-    return ERR_INVALID_FILE;
-  fread_byte(f, &(content->revision_major));
-  fread_byte(f, &(content->revision_minor));
-  fread_byte(f, &(content->flags));
-  fread_byte(f, &(content->object_type));
-  fread_byte(f, &(content->revision_day));
-  fread_byte(f, &(content->revision_month));
-  fread_word(f, &(content->revision_year));
-  fskip(f, 1);
-  fread_8_chars(f, content->name);
-  fskip(f, 23);
-  fread_byte(f, &(content->device_type));
-  fread_byte(f, &(content->data_type));
-  fskip(f, 24);
-  fread_long(f, &flash_size);
-  content->pages = NULL;
 
-  // determine block size
-  if (content->data_type == TI83p_AMS) {
-    block_size = 256;
-    mask_mode = MODE_AMS;
-  } else if (content->data_type == TI83p_APPL) {
-    block_size = 128;
-    mask_mode = MODE_APPS;
-  } else
-    return ERR_INVALID_FILE;
+  for (content = head;; content = content->next) 
+  {
+	  fread_8_chars(f, signature);
+	  content->model = tifiles_file_get_model(filename);
+	  fread_byte(f, &(content->revision_major));
+	  fread_byte(f, &(content->revision_minor));
+	  fread_byte(f, &(content->flags));
+	  fread_byte(f, &(content->object_type));
+	  fread_byte(f, &(content->revision_day));
+	  fread_byte(f, &(content->revision_month));
+	  fread_word(f, &(content->revision_year));
+	  fskip(f, 1);
+	  fread_8_chars(f, content->name);
+	  fskip(f, 23);
+	  fread_byte(f, &(content->device_type));
+	  fread_byte(f, &(content->data_type));
+	  fskip(f, 24);
+	  fread_long(f, &content->data_length);
 
-  // compute approximative number of pages
-  num_blocks = (flash_size / 77) / (block_size >> 5);
-  content->pages = (Ti8xFlashPage *) calloc(num_blocks + 10,
-					    sizeof(Ti8xFlashPage));
-  if (content->pages == NULL)
-    return ERR_MALLOC;
+	  if(content->data_type == TI83p_CERTIF || content->data_type == TI83p_LICENSE)
+	  {
+		  // get data like TI9X
+		  content->data_part = (uint8_t *) calloc(content->data_length + 256, 1);
+		  if (content->data_part == NULL) 
+		  {
+			fclose(f);
+			return ERR_MALLOC;
+		  }
 
-  // reset block reader by passing mode=0
-  read_data_block(file, &flash_address, &flash_page, NULL, 0);
-  flag = 0x80;			// OS only
-  for (i = 0;; i++) {
-    ret = read_data_block(file, &flash_address, &flash_page,
-			  buf, mask_mode);
+		  memset(content->data_part, 0xff, content->data_length + 256);
+		  fread(content->data_part, content->data_length, 1, f);
 
-    if (mask_mode & MODE_AMS) {
-      if (i == 0) {
-	// first block is header
-	flag = 0x80;
-	flash_address = flash_page = 0;
-      }
-      if (i == 1) {
-	// other blocks are data
-	flag = 0x00;
-      }
-      if (ret == 3) {
-	// last block is signature
-	flag = 0x80;
-	flash_address = flash_page = 0;	// fix quirk in IntelHex module
-      }
-    }
-    if (ret < 0)
-      break;
+		  content->next = NULL;
+	  }
+	  else if(content->data_type == TI83p_AMS || content->data_type == TI83p_APPL)
+	  {
+		  // reset/initialize block reader
+		  hex_block_read(f, NULL, NULL, NULL, NULL, NULL);
+		  content->pages = NULL;
 
-    content->pages[i].offset = flash_address;
-    content->pages[i].page = flash_page;
-    content->pages[i].flag = flag;
-    content->pages[i].length = block_size;
+		  // we should determine the number of pages, to do...
+		  content->pages = calloc(50+1, sizeof(Ti8xFlashPage *));
+		  if (content->pages == NULL)
+			return ERR_MALLOC;
 
-    content->pages[i].data = (uint8_t *) calloc(block_size, 1);
-    if (content->pages[i].data == NULL)
-      return ERR_MALLOC;
+		  // read FLASH pages
+			for(i = 0, ret = 0; !ret; i++)
+			{
+				uint16_t size;
+				uint16_t addr;
+				uint16_t page;
+				uint8_t flag = 0x80;
+				uint8_t data[PAGE_SIZE];
+				FlashPage* fp = content->pages[i] = calloc(1, sizeof(FlashPage));
 
-    memcpy(content->pages[i].data, buf, block_size);
+				ret = hex_block_read(f, &size, &addr, &flag, data, &page);
+
+				fp->data = (uint8_t *) calloc(PAGE_SIZE, 1);
+				memset(fp->data, 0xff, PAGE_SIZE);
+				if (fp->data == NULL)
+					return ERR_MALLOC;
+
+				fp->addr = addr;
+				fp->page = page;
+				fp->flag = flag;
+				fp->size = size;
+				memcpy(fp->data, data, size);		
+			} 
+		  content->num_pages = i;
+		  content->next = NULL;
+	  }
+
+	  // check for end of file
+		fread_8_chars(f, signature);
+		if(strcmp(signature, "**TIFL**") || feof(f))
+			break;
+		fseek(f, -8, SEEK_CUR);
+
+		content->next = (Ti8xFlash *) calloc(1, sizeof(Ti8xFlash));
+		if (content->next == NULL) 
+		{
+			fclose(f);
+			return ERR_MALLOC;
+		}
   }
-  content->num_pages = i;
+
+  fclose(f);
 
   return 0;
 }
@@ -521,16 +479,21 @@ TIEXPORT int TICALL ti8x_read_flash_file(const char *filename,
 /* Writing */
 /***********/
 
-/*
-  Write the content of the structure into the file.
-  If the filename is NULL, the function uses the name as filename.
-  - filename [in]: a file to write
-  - content [in]: the address of a structure
-  - int [out]: an error code
-*/
-TIEXPORT int TICALL ti8x_write_regular_file(const char *fname,
-					    Ti8xRegular * content,
-					    char **real_fname)
+/**
+ * ti8x_file_write_regular:
+ * @filename: name of single/group file where to write or NULL.
+ * @content: the file content to write.
+ * @real_filename: pointer address or NULL. Must be freed if needed when no longer needed.
+ *
+ * Write one (or several) variable(s) into a single (group) file. If filename is set to NULL,
+ * the function build a filename from varname and allocates resulting filename in %real_fname.
+ * %filename and %real_filename can be NULL but not both !
+ *
+ * %real_filename must be freed when no longer used.
+ *
+ * Return value: an error code, 0 otherwise.
+ **/
+int ti8x_file_write_regular(const char *fname, Ti8xRegular *content, char **real_fname)
 {
   FILE *f;
   int i;
@@ -539,91 +502,118 @@ TIEXPORT int TICALL ti8x_write_regular_file(const char *fname,
   char trans[17];
   uint32_t data_length;
   uint16_t packet_length = 0x0B;
+  uint8_t name_length = 8;
 
-  if (fname != NULL) {
+  if (fname != NULL) 
+  {
     filename = strdup(fname);
     if (filename == NULL)
       return ERR_MALLOC;
-  } else {
-    tixx_translate_varname(content->entries[0].name, trans,
-			   content->entries[0].type, content->calc_type);
+  } 
+  else 
+  {
+    tifiles_transcode_varname(content->model, trans, content->entries[0]->name, 
+			   content->entries[0]->type );
 
     filename = (char *) malloc(strlen(trans) + 1 + 5 + 1);
     strcpy(filename, trans);
     strcat(filename, ".");
-    strcat(filename, tifiles_vartype2file(content->entries[0].type));
+    strcat(filename, tifiles_vartype2fext(content->model, content->entries[0]->type));
     if (real_fname != NULL)
       *real_fname = strdup(filename);
   }
 
-  f = fopen(filename, "wb");
-  if (f == NULL) {
-    printl3(0, "Unable to open this file: <%s>\n", filename);
+  f = gfopen(filename, "wb");
+  if (f == NULL) 
+  {
+    tifiles_info( "Unable to open this file: <%s>", filename);
     free(filename);
     return ERR_FILE_OPEN;
   }
   free(filename);
 
   // write header
-  fwrite_8_chars(f, tifiles_calctype2signature(content->calc_type));
-  fwrite(fsignature, 1, 3, f);
-  fwrite_n_chars(f, 42, content->comment);
-  for (i = 0, data_length = 0; i < content->num_entries; i++) {
-    Ti8xVarEntry *entry = &(content->entries[i]);
-    data_length += entry->size + 15;
-    if (is_ti8586(content->calc_type))
-      data_length += 1;
-    if (is_ti83p(content->calc_type))
-      data_length += 2;
+  fwrite_8_chars(f, tifiles_calctype2signature(content->model));
+  fwrite(content->model == CALC_TI85 ? fsignature85 : fsignature8x, 1, 3, f);
+  fwrite_n_bytes(f, 42, content->comment);
+  for (i = 0, data_length = 0; i < content->num_entries; i++) 
+  {
+    VarEntry *entry = content->entries[i];
+
+	if(content->model == CALC_TI82 || content->model == CALC_TI73)
+      data_length += entry->size + 15;
+	if(content->model == CALC_TI83)
+      data_length += entry->size + 15;
+	else if(content->model == CALC_TI85)
+		data_length += entry->size + 8 + strlen(entry->name);
+	else if(content->model == CALC_TI86)
+      data_length += entry->size + 16;
+    else if (is_ti83p(content->model))
+      data_length += entry->size + 17;
   }
+
   if (data_length > 65535)
     return ERR_GROUP_SIZE;
   fwrite_word(f, (uint16_t) data_length);
 
-  switch (content->calc_type) {
-  case CALC_TI85:
-  case CALC_TI86:
-    packet_length = 0x0C;
-    break;
-  case CALC_TI83P:
-  case CALC_TI84P:
-    packet_length = 0x0D;
-    break;
-  case CALC_TI82:
-  case CALC_TI83:
-    packet_length = 0x0B;
-    break;
-  default:
-    break;
-  }
-
   // write data section
-  for (i = 0, sum = 0; i < content->num_entries; i++) {
-    Ti8xVarEntry *entry = &(content->entries[i]);
+  for (i = 0, sum = 0; i < content->num_entries; i++) 
+  {
+    VarEntry *entry = content->entries[i];
+
+	switch (content->model) 
+	  {
+	  case CALC_TI85:
+		packet_length = 4 + strlen(entry->name);	//offset to data length
+		break;
+	  case CALC_TI86:
+		packet_length = 0x0C;
+		break;
+	  case CALC_TI83P:
+	  case CALC_TI84P:
+	  case CALC_TI84P_USB:
+		packet_length = 0x0D;
+		break;
+	  case CALC_TI73:
+	  case CALC_TI82:
+	  case CALC_TI83:
+		packet_length = 0x0B;
+		break;
+	  default:
+		break;
+	  }
 
     fwrite_word(f, packet_length);
     fwrite_word(f, (uint16_t)entry->size);
     fwrite_byte(f, entry->type);
-    if (is_ti8586(content->calc_type)) {
-      size_t name_length = strlen(entry->name);
+    if (is_ti8586(content->model)) 
+	{
+      name_length = strlen(entry->name);
       fwrite_byte(f, (uint8_t)name_length);
-      fwrite_n_chars(f, name_length, entry->name);
+	  if(content->model == CALC_TI85)
+		fwrite_n_chars(f, name_length, entry->name);
+	  else
+		fwrite_n_chars2(f, 8, entry->name); // space padded
     }
     else
     	fwrite_n_chars(f, 8, entry->name);
-    if (is_ti83p(content->calc_type))
+    if (is_ti83p(content->model))
       fwrite_word(f, (uint16_t)((entry->attr == ATTRB_ARCHIVED) ? 0x80 : 0x00));
     fwrite_word(f, (uint16_t)entry->size);
     fwrite(entry->data, entry->size, 1, f);
 
     sum += packet_length;
-    sum += tifiles_compute_checksum((uint8_t *) & (entry->size), 2);
+    sum += MSB(entry->size);
+	sum += LSB(entry->size);
     sum += entry->type;
-    if (is_ti8586(content->calc_type))
+    if (is_ti8586(content->model))
       sum += strlen(entry->name);
-    sum += tifiles_compute_checksum((uint8_t *) entry->name, 8);
-    sum += tifiles_compute_checksum((uint8_t *) & (entry->size), 2);
-    sum += tifiles_compute_checksum(entry->data, entry->size);
+    sum += tifiles_checksum((uint8_t *)entry->name, name_length);
+	if(content->model == CALC_TI86)
+		sum += (8 - name_length) * ' ';
+    sum += MSB(entry->size);
+	sum += LSB(entry->size);
+    sum += tifiles_checksum(entry->data, entry->size);
   }
 
   //checksum is the sum of all bytes in the data section
@@ -635,28 +625,30 @@ TIEXPORT int TICALL ti8x_write_regular_file(const char *fname,
   return 0;
 }
 
-/*
-  Write the content of the structure into the file
-  - filename [in]: a file to write
-  - content [in]: the address of a structure
-  - int [out]: an error code
-*/
-TIEXPORT int TICALL ti8x_write_backup_file(const char *filename,
-					   Ti8xBackup * content)
+/**
+ * ti8x_file_write_backup:
+ * @filename: name of backup file where to write.
+ * @content: the file content to write.
+ *
+ * Write content to a backup file.
+ *
+ * Return value: an error code, 0 otherwise.
+ **/
+int ti8x_file_write_backup(const char *filename, Ti8xBackup *content)
 {
   FILE *f;
-  uint16_t sum = 0;
   uint16_t data_length;
 
-  f = fopen(filename, "wb");
-  if (f == NULL) {
-    printl3(0, "Unable to open this file: <%s>\n", filename);
+  f = gfopen(filename, "wb");
+  if (f == NULL) 
+  {
+    tifiles_info( "Unable to open this file: <%s>", filename);
     return ERR_FILE_OPEN;
   }
   // write header
-  fwrite_8_chars(f, tifiles_calctype2signature(content->calc_type));
-  fwrite(fsignature, 1, 3, f);
-  fwrite_n_chars(f, 42, content->comment);
+  fwrite_8_chars(f, tifiles_calctype2signature(content->model));
+  fwrite(content->model == CALC_TI85 ? fsignature85 : fsignature8x, 1, 3, f);
+  fwrite_n_bytes(f, 42, content->comment);
   data_length =
       content->data_length1 + content->data_length2 +
       content->data_length3 + 17;
@@ -669,7 +661,7 @@ TIEXPORT int TICALL ti8x_write_backup_file(const char *filename,
   fwrite_byte(f, content->type);
   fwrite_word(f, content->data_length2);
   fwrite_word(f, content->data_length3);
-  if (content->calc_type != CALC_TI86)
+  if (content->model != CALC_TI86)
     fwrite_word(f, content->mem_address);
   else
     fwrite_word(f, content->data_length4);
@@ -682,45 +674,13 @@ TIEXPORT int TICALL ti8x_write_backup_file(const char *filename,
   if (content->data_length3)	// TI86: can be NULL
     fwrite_word(f, content->data_length3);
   fwrite(content->data_part3, 1, content->data_length3, f);
-  if (content->calc_type == CALC_TI86) {
+  if (content->model == CALC_TI86) {
     fwrite_word(f, content->data_length4);
     fwrite(content->data_part4, 1, content->data_length4, f);
   }
+
   // checksum = sum of all bytes in bachup headers and data num_entries
-  sum = 0;
-  sum += 9;
-  sum +=
-      tifiles_compute_checksum((uint8_t *) & (content->data_length1), 2);
-  sum += content->type;
-  sum +=
-      tifiles_compute_checksum((uint8_t *) & (content->data_length2), 2);
-  sum +=
-      tifiles_compute_checksum((uint8_t *) & (content->data_length3), 2);
-  if (content->calc_type != CALC_TI86)
-    sum +=
-	tifiles_compute_checksum((uint8_t *) & (content->mem_address), 2);
-  else
-    sum +=
-	tifiles_compute_checksum((uint8_t *) & (content->data_length4), 2);
-
-  sum +=
-      tifiles_compute_checksum((uint8_t *) & (content->data_length1), 2);
-  sum +=
-      tifiles_compute_checksum(content->data_part1, content->data_length1);
-  sum +=
-      tifiles_compute_checksum((uint8_t *) & (content->data_length2), 2);
-  sum +=
-      tifiles_compute_checksum(content->data_part2, content->data_length2);
-  sum +=
-      tifiles_compute_checksum((uint8_t *) & (content->data_length3), 2);
-  sum +=
-      tifiles_compute_checksum(content->data_part3, content->data_length3);
-  sum +=
-      tifiles_compute_checksum((uint8_t *) & (content->data_length4), 2);
-  sum +=
-      tifiles_compute_checksum(content->data_part4, content->data_length4);
-
-  content->checksum = sum;
+  content->checksum = compute_backup_sum(content);
   fwrite_word(f, content->checksum);
 
   fclose(f);
@@ -728,40 +688,74 @@ TIEXPORT int TICALL ti8x_write_backup_file(const char *filename,
   return 0;
 }
 
-TIEXPORT int TICALL ti8x_write_flash_file(const char *filename,
-					  Ti8xFlash * content)
+/**
+ * ti8x_file_write_flash:
+ * @filename: name of flash file where to write.
+ * @content: the file content to write.
+ *
+ * Write content to a flash file (os or app).
+ *
+ * Return value: an error code, 0 otherwise.
+ **/
+int ti8x_file_write_flash(const char *filename, Ti8xFlash *head)
 {
-  FILE *f, *file;
-  int i, j;
+  FILE *f;
+  Ti8xFlash *content = head;
+  int i;
+  int bytes_written = 0;
+  long pos;
 
-  f = fopen(filename, "wb");
-  if (f == NULL) {
-    printl3(0, "Unable to open this file: <%s>\n", filename);
+  f = gfopen(filename, "wb");
+  if (f == NULL) 
+  {
+    tifiles_info("Unable to open this file: <%s>", filename);
     return ERR_FILE_OPEN;
   }
-  file = f;
+  
+  for (content = head; content != NULL; content = content->next) 
+  {
+	  // header
+    fwrite_8_chars(f, "**TIFL**");
+    fwrite_byte(f, content->revision_major);
+    fwrite_byte(f, content->revision_minor);
+    fwrite_byte(f, content->flags);
+    fwrite_byte(f, content->object_type);
+    fwrite_byte(f, content->revision_day);
+    fwrite_byte(f, content->revision_month);
+    fwrite_word(f, content->revision_year);
+    fwrite_byte(f, (uint8_t) strlen(content->name));
+    fwrite_8_chars(f, content->name);
+    fwrite_n_chars(f, 23, "");
+    fwrite_byte(f, content->device_type);
+    fwrite_byte(f, content->data_type);
+    fwrite_n_chars(f, 24, "");
+	pos = ftell(f);
+    fwrite_long(f, content->data_length);
 
-  fwrite_8_chars(f, "**TIFL**");
-  fwrite_byte(f, content->revision_major);
-  fwrite_byte(f, content->revision_minor);
-  fwrite_byte(f, content->flags);
-  fwrite_byte(f, content->object_type);
-  fwrite_byte(f, content->revision_day);
-  fwrite_byte(f, content->revision_month);
-  fwrite_word(f, content->revision_year);
-  fwrite_byte(f, (uint8_t)strlen(content->name));
-  fwrite_8_chars(f, content->name);
-  for (j = 0; j < 23; j++)
-    fputc(0, f);
-  fwrite_byte(f, content->device_type);
-  fwrite_byte(f, content->data_type);
-  for (j = 0; j < 24; j++)
-    fputc(0, f);
-  fwrite_long(f, 0);		//????
+	// data
+	if(content->data_type == TI83p_CERTIF || content->data_type == TI83p_LICENSE)
+	{
+		fwrite(content->data_part, content->data_length, 1, f);
+	}
+	else if(content->data_type == TI83p_AMS || content->data_type == TI83p_APPL)
+	{
+		for (i = 0; i < content->num_pages; i++)
+		  {
+			  bytes_written += hex_block_write(f, 
+				  content->pages[i]->size, content->pages[i]->addr,
+				  content->pages[i]->flag, content->pages[i]->data, 
+				  content->pages[i]->page);
+		  }
 
-  for (i = 0; i < content->num_pages; i++)
-    write_data_block(file, content->pages[i].offset,
-		     content->pages[i].page, content->pages[i].data, 0);
+		  // final block
+		  bytes_written += hex_block_write(f, 0, 0, 0, NULL, 0);
+		  fseek(f, -bytes_written - 4, SEEK_CUR);
+		  fwrite_long(f, bytes_written);
+		  fseek(f, SEEK_END, 0L);
+	}
+  }  
+
+  fclose(f);
 
   return 0;
 }
@@ -771,147 +765,177 @@ TIEXPORT int TICALL ti8x_write_flash_file(const char *filename,
 /* Displaying */
 /**************/
 
-/* 
-   Display the characteristics of a TI regular content
-   - content [in]: the content to show
-   - int [out]: an error code
-*/
-TIEXPORT int TICALL ti8x_display_regular_content(Ti8xRegular * content)
+/**
+ * ti8x_content_display_regular:
+ * @content: a Ti8xRegular structure.
+ *
+ * Display fields of a Ti8xRegular structure.
+ *
+ * Return value: an error code, 0 otherwise.
+ **/
+int ti8x_content_display_regular(Ti8xRegular *content)
 {
   int i;
   char trans[17];
 
-  printl3(0, "Signature:     <%s>\n",
-	  tifiles_calctype2signature(content->calc_type));
-  printl3(0, "Comment:       <%s>\n", content->comment);
-  printl3(0, "# of entries:  %i\n", content->num_entries);
+  tifiles_info("Signature:     <%s>",
+	  tifiles_calctype2signature(content->model));
+  tifiles_info("Comment:       <%s>", content->comment);
+  tifiles_info("# of entries:  %i", content->num_entries);
 
-  for (i = 0; i < content->num_entries /*&& i<5 */ ; i++) {
-    printl3(0, "Entry #%i\n", i);
-    printl3(0, "  name:        <%s>\n",
-	    tixx_translate_varname(content->entries[i].name,
-				   trans,
-				   content->entries[i].type,
-				   content->calc_type));
-    printl3(0, "  type:        %02X (%s)\n",
-	    content->entries[i].type,
-	    tifiles_vartype2string(content->entries[i].type));
-    printl3(0, "  attr:        %s\n",
-	    tifiles_attribute_to_string(content->entries[i].attr));
-    printl3(0, "  length:      %04X (%i)\n",
-	    content->entries[i].size, content->entries[i].size);
+  for (i = 0; i < content->num_entries /*&& i<5 */ ; i++) 
+  {
+    tifiles_info("Entry #%i", i);
+    tifiles_info("  name:        <%s>",
+	    tifiles_transcode_varname(content->model, trans,
+					content->entries[i]->name,				   
+				   content->entries[i]->type
+				   ));
+    tifiles_info("  type:        %02X (%s)",
+	    content->entries[i]->type,
+	    tifiles_vartype2string(content->model, content->entries[i]->type));
+    tifiles_info("  attr:        %s",
+	    tifiles_attribute_to_string(content->entries[i]->attr));
+    tifiles_info("  length:      %04X (%i)",
+	    content->entries[i]->size, content->entries[i]->size);
   }
 
-  printl3(0, "Checksum:      %04X (%i) \n", content->checksum,
+  tifiles_info("Checksum:      %04X (%i) ", content->checksum,
 	  content->checksum);
 
   return 0;
 }
 
-/*
-  Display the characteristics of a TI backup content
-  - content [in]: the content to show
-  - int [out]: an error code
-*/
-TIEXPORT int TICALL ti8x_display_backup_content(Ti8xBackup * content)
+/**
+ * ti8x_content_display_backup:
+ * @content: a Ti8xBackup structure.
+ *
+ * Display fields of a Ti8xBackup structure.
+ *
+ * Return value: an error code, 0 otherwise.
+ **/
+int ti8x_content_display_backup(Ti8xBackup *content)
 {
-  printl3(0, "Signature:      <%s>\n",
-	  tifiles_calctype2signature(content->calc_type));
-  printl3(0, "Comment:        <%s>\n", content->comment);
-  printl3(0, "Type:           %02X (%s)\n", content->type,
-	  tifiles_vartype2string(content->type));
-  printl3(0, "Mem address:    %04X (%i)\n",
+  tifiles_info("Signature:      <%s>",
+	  tifiles_calctype2signature(content->model));
+  tifiles_info("Comment:        <%s>", content->comment);
+  tifiles_info("Type:           %02X (%s)", content->type,
+	  tifiles_vartype2string(content->model, content->type));
+  tifiles_info("Mem address:    %04X (%i)",
 	  content->mem_address, content->mem_address);
 
-  printl3(0, "\n");
+  tifiles_info("\n");
 
-  printl3(0, "data_length1:   %04X (%i)\n",
+  tifiles_info("data_length1:   %04X (%i)",
 	  content->data_length1, content->data_length1);
-  printl3(0, "data_length2:   %04X (%i)\n",
+  tifiles_info("data_length2:   %04X (%i)",
 	  content->data_length2, content->data_length2);
-  printl3(0, "data_length3:   %04X (%i)\n",
+  tifiles_info("data_length3:   %04X (%i)",
 	  content->data_length3, content->data_length3);
-  if (content->calc_type == CALC_TI86)
-    printl3(0, "data_length4:   %04X (%i)\n",
+  if (content->model == CALC_TI86)
+    tifiles_info("data_length4:   %04X (%i)",
 	    content->data_length4, content->data_length4);
 
-  printl3(0, "Checksum:       %04X (%i) \n", content->checksum,
+  tifiles_info("Checksum:       %04X (%i) ", content->checksum,
 	  content->checksum);
 
   return 0;
 }
 
-/*
-  Display the characteristics of a TI flash content
-  - content [in]: the content to show
-  - int [out]: an error code
-*/
-TIEXPORT int TICALL ti8x_display_flash_content(Ti8xFlash * content)
+/**
+ * ti8x_content_display_flash:
+ * @content: a Ti8xFlash structure.
+ *
+ * Display fields of a Ti8xFlash structure.
+ *
+ * Return value: an error code, 0 otherwise.
+ **/
+int ti8x_content_display_flash(Ti8xFlash *content)
 {
-  Ti8xFlash *ptr = content;
+  Ti8xFlash *ptr;
 
-  printl3(0, "Signature:       <%s>\n",
-	  tifiles_calctype2signature(ptr->calc_type));
-  printl3(0, "Revision:        %i.%i\n", ptr->revision_major,
-	  ptr->revision_minor);
-  printl3(0, "Flags:           %02X\n", ptr->flags);
-  printl3(0, "Object type:     %02X\n", ptr->object_type);
-  printl3(0, "Date:            %02X/%02X/%02X%02X\n",
-	  ptr->revision_day, ptr->revision_month,
-	  ptr->revision_year & 0xff, (ptr->revision_year & 0xff00) >> 8);
-  printl3(0, "Name:            <%s>\n", ptr->name);
-  printl3(0, "Device type:     %s\n",
-	  ptr->device_type == DEVICE_TYPE_83P ? "ti83+" : "ti73");
-  printl3(0, "Data type:       ");
-  switch (ptr->data_type) {
-  case 0x23:
-    printl3(0, "OS data\n");
-    break;
-  case 0x24:
-    printl3(0, "APP data\n");
-    break;
-  case 0x25:
-    printl3(0, "certificate\n");
-    break;
-  case 0x3E:
-    printl3(0, "license\n");
-    break;
-  default:
-    printl3(0, "Unknown (mailto roms@lpg.ticalc.org)\n");
-    break;
+  for (ptr = content; ptr != NULL; ptr = ptr->next) 
+  {
+	  tifiles_info("Signature:       <%s>",
+		  tifiles_calctype2signature(ptr->model));
+	  tifiles_info("Revision:        %i.%i", ptr->revision_major,
+		  ptr->revision_minor);
+	  tifiles_info("Flags:           %02X", ptr->flags);
+	  tifiles_info("Object type:     %02X", ptr->object_type);
+	  tifiles_info("Date:            %02X/%02X/%02X%02X",
+		  ptr->revision_day, ptr->revision_month,
+		  ptr->revision_year&0xff, (ptr->revision_year&0xff00) >> 8);
+	  tifiles_info("Name:            <%s>", ptr->name);
+	  tifiles_info("Device type:     %s",
+		  ptr->device_type == DEVICE_TYPE_83P ? "ti83+" : "ti73");
+	  tifiles_info("Data type:       ");
+	  switch (ptr->data_type) 
+	  {
+	  case 0x23:
+		tifiles_info("OS data");
+		break;
+	  case 0x24:
+		tifiles_info("APP data");
+		break;
+	  case 0x20:
+	  case 0x25:
+		tifiles_info("certificate");
+		break;
+	  case 0x3E:
+		tifiles_info("license");
+		break;
+	  default:
+		tifiles_info("Unknown (mailto roms@lpg.ticalc.org)\n");
+		break;
+	  }
+	  tifiles_info("Length:          %08X (%i)", ptr->data_length,
+			ptr->data_length);
+	  tifiles_info("");
+	  tifiles_info("Number of pages: %i", ptr->num_pages);
   }
-  printl3(0, "Number of pages: %i\n", ptr->num_pages);
 
   return 0;
 }
 
-/*
-  Display the internal characteristics of a TI file:
-  - filename [in]: the file to stat
-  - int [out]: an error code
-*/
-TIEXPORT int TICALL ti8x_display_file(const char *filename)
+/**
+ * ti8x_file_display:
+ * @filename: a TI file.
+ *
+ * Determine file class and display internal content.
+ *
+ * Return value: an error code, 0 otherwise.
+ **/
+int ti8x_file_display(const char *filename)
 {
   Ti8xRegular content1;
   Ti8xBackup content2;
   Ti8xFlash content3;
 
-  if (tifiles_is_a_flash_file(filename)) {
-    ti8x_read_flash_file(filename, &content3);
-    ti8x_display_flash_content(&content3);
-    ti8x_free_flash_content(&content3);
-  } else if (tifiles_is_a_backup_file(filename)) {
-    ti8x_read_backup_file(filename, &content2);
-    ti8x_display_backup_content(&content2);
-    ti8x_free_backup_content(&content2);
-  } else if (tifiles_is_a_regular_file(filename)) {
-    ti8x_read_regular_file(filename, &content1);
-    ti8x_display_regular_content(&content1);
-    ti8x_free_regular_content(&content1);
-  } else {
-    printl3(0, "Unknwon file type !\n");
+  if (tifiles_file_is_flash(filename)) 
+  {
+    ti8x_file_read_flash(filename, &content3);
+    ti8x_content_display_flash(&content3);
+    tifiles_content_delete_flash(&content3);
+  } 
+  else if (tifiles_file_is_backup(filename)) 
+  {
+    ti8x_file_read_backup(filename, &content2);
+    ti8x_content_display_backup(&content2);
+    tifiles_content_delete_backup(&content2);
+  } 
+  else if (tifiles_file_is_regular(filename)) 
+  {
+    ti8x_file_read_regular(filename, &content1);
+    ti8x_content_display_regular(&content1);
+    tifiles_content_delete_regular(&content1);
+  } 
+  else 
+  {
+    tifiles_info("Unknown file type !");
     return ERR_BAD_FILE;
   }
 
   return 0;
 }
+
+#endif

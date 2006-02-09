@@ -2,7 +2,7 @@
 /* $Id$ */
 
 /*  libtifiles - Ti File Format library, a part of the TiLP project
- *  Copyright (C) 1999-2004  Romain Lievin
+ *  Copyright (C) 1999-2005  Romain Lievin
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,17 +23,12 @@
   Variable type ID and file extensions
 */
 
-#include <stdio.h>
+#ifndef DISABLE_TI9X
+
 #include <string.h>
 #include "gettext.h"
-
-#include "export.h"
 #include "typesv2.h"
-#include "printl.h"
-
-#ifdef __WIN32__
-# define strcasecmp _stricmp
-#endif
+#include "logging.h"
 
 /*
   Is missing :
@@ -72,12 +67,12 @@ const char *V200_CONST[V200_MAXTYPES + 1][4] = {
   {"", "v2?", "Unknown", N_("Unknown")},
   {"RDIR", "v2?", "Unknown"},
   {"LDIR", "v2?", "Unknown"},
-  {"ZIP", "v2?", "Zipped", N_("Zipped")},
+  {"ZIP", "v2y", "Zipped", N_("Zipped")},
   {"BKUP", "v2g", "Backup", N_("Backup")},
   {"", "v2?", "Unknown", N_("Unknown")},
   {"DIR", "v2?", "Unknown", N_("Unknown")},
   {"", "v2?", "Unknown", N_("Unknown")},
-  {"ASM", "v2z", "Asm Prog", N_("Asm Prog")},
+  {"ASM", "v2z", "Asm Prog", N_("Asm Program")},
   {"IDLIST", "v2idl", "ID-LIST", N_("ID-LIST")},
   {"AMS", "v2u", "OS upgrade", N_("OS upgrade")},
   {"APPL", "v2k", "Application", N_("Application")},
@@ -99,57 +94,59 @@ const char *V200_CONST[V200_MAXTYPES + 1][4] = {
 // Return the type corresponding to the value
 const char *v200_byte2type(uint8_t data)
 {
-  return (data < V200_MAXTYPES) ? V200_CONST[data][0] : "";
+	//if(data >= V200_MAXTYPES)	tifiles_warning(_("typesxx: unknown type (%02x).\n"), data);
+	return (data < V200_MAXTYPES) ? V200_CONST[data][0] : "";
 }
 
 // Return the value corresponding to the type
 uint8_t v200_type2byte(const char *s)
 {
-  int i;
+	int i;
 
-  for (i = 0; i < V200_MAXTYPES; i++) {
-    if (!strcmp(V200_CONST[i][0], s))
-      break;
-  }
+	for (i = 0; i < V200_MAXTYPES; i++) 
+	{
+		if (!strcmp(V200_CONST[i][0], s))
+			break;
+	}
 
-  if (i == V200_MAXTYPES)
-    printl3(1, _("unknown type. There is a bug. Please report this information.\n"));
-
-  return i;
+	//if (i == V200_MAXTYPES) tifiles_warning( _("v200_type2byte: unknown type."));
+	return i;
 }
 
 // Return the file extension corresponding to the value
 const char *v200_byte2fext(uint8_t data)
 {
-  return (data < V200_MAXTYPES) ? V200_CONST[data][1] : "v2?";
+	//if(data >= V200_MAXTYPES)	tifiles_warning(_("typesxx: unknown type (%02x).\n"), data);
+	return (data < V200_MAXTYPES) ? V200_CONST[data][1] : "v2?";
 }
 
 // Return the value corresponding to the file extension
 uint8_t v200_fext2byte(const char *s)
 {
-  int i;
+	int i;
 
-  for (i = 0; i < V200_MAXTYPES; i++) {
-    if (!strcasecmp(V200_CONST[i][1], s))
-      break;
-  }
+	for (i = 0; i < V200_MAXTYPES; i++) 
+	{
+		if (!g_ascii_strcasecmp(V200_CONST[i][1], s))
+			break;
+	}
 
-  if (i == V200_MAXTYPES)
-    printl3(1, _("unknown type. It is a bug. Please report this information.\n"));
-
-  return i;
+	//if (i == V200_MAXTYPES)	tifiles_warning( _("v200_fext2byte: unknown type.\n"));
+	return i;
 }
 
 // Return the descriptive associated with the vartype
 const char *v200_byte2desc(uint8_t data)
 {
-  return (data < V200_MAXTYPES) ? V200_CONST[data][2] : _("Unknown");
+	//if(data >= V200_MAXTYPES)	tifiles_warning(_("typesxx: unknown type (%02x).\n"), data);
+	return (data < V200_MAXTYPES) ? V200_CONST[data][2] : _("Unknown");
 }
 
 // Return the icon name associated with the vartype
 const char *v200_byte2icon(uint8_t data)
 {
-  return (data < V200_MAXTYPES) ? V200_CONST[data][3] : "Unknown";
+	//if(data >= V200_MAXTYPES)	tifiles_warning(_("typesxx: unknown type (%02x).\n"), data);
+	return (data < V200_MAXTYPES) ? V200_CONST[data][3] : "Unknown";
 }
 
-
+#endif

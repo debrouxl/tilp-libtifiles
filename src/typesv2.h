@@ -2,7 +2,7 @@
 /* $Id$ */
 
 /*  libtifiles - Ti File Format library, a part of the TiLP project
- *  Copyright (C) 1999-2004  Romain Lievin
+ *  Copyright (C) 1999-2005  Romain Lievin
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -45,7 +45,8 @@
 #define V200_BKUP 0x1D
 #define V200_FDIR 0x1F		// full
 #define V200_DIR  V200_FDIR	//type
-#define V200_ASM  0x21
+#define V200_GETCERT 0x20
+#define V200_ASM     0x21
 #define V200_IDLIST  0x22
 #define V200_AMS     0x23
 #define V200_APPL    0x24

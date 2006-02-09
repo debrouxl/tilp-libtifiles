@@ -2,7 +2,7 @@
 /* $Id$ */
 
 /*  libtifiles - Ti File Format library, a part of the TiLP project
- *  Copyright (C) 1999-2004  Romain Lievin
+ *  Copyright (C) 1999-2005  Romain Lievin
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -46,6 +46,7 @@
 #define TI73_AMS    0x23
 #define TI73_APPL   0x24
 #define TI73_IDLIST 0x26
+#define TI73_CLK	0x29
 
 // libtifiles: for internal use only, not exported !
 

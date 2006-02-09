@@ -8,6 +8,12 @@
 /* Define to 1 if using `alloca.c'. */
 #undef C_ALLOCA
 
+/* Defined to disable the TI8x support */
+#undef DISABLE_TI8X
+
+/* Defined to disable the TI9x support */
+#undef DISABLE_TI9X
+
 /* Define to 1 if translation of program messages to the user's native
    language is requested. */
 #undef ENABLE_NLS
@@ -60,9 +66,6 @@
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #undef HAVE_DLFCN_H
 
-/* Define to 1 if you don't have `vprintf' but do have `_doprnt.' */
-#undef HAVE_DOPRNT
-
 /* Use -fvisibility=hidden flag */
 #undef HAVE_FVISIBILITY
 
@@ -106,8 +109,8 @@
 /* Define if you have <langinfo.h> and nl_langinfo(CODESET). */
 #undef HAVE_LANGINFO_CODESET
 
-/* Define if your <locale.h> file defines LC_MESSAGES. */
-#undef HAVE_LC_MESSAGES
+/* Define to 1 if you have the `z' library (-lz). */
+#undef HAVE_LIBZ
 
 /* Define to 1 if you have the <limits.h> header file. */
 #undef HAVE_LIMITS_H
@@ -219,9 +222,6 @@
 /* Define if you have the 'unsigned long long' type. */
 #undef HAVE_UNSIGNED_LONG_LONG
 
-/* Define to 1 if you have the `vprintf' function. */
-#undef HAVE_VPRINTF
-
 /* Define if you have the 'wchar_t' type. */
 #undef HAVE_WCHAR_T
 
@@ -294,10 +294,6 @@
 
 /* Version number of package */
 #undef VERSION
-
-/* Define to 1 if your processor stores words with the most significant byte
-   first (like Motorola and SPARC, unlike Intel and VAX). */
-#undef WORDS_BIGENDIAN
 
 /* Define to empty if `const' does not conform to ANSI C. */
 #undef const

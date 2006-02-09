@@ -2,7 +2,7 @@
 /* $Id$ */
 
 /*  libtifiles - Ti File Format library, a part of the TiLP project
- *  Copyright (C) 1999-2004  Romain Lievin
+ *  Copyright (C) 1999-2005  Romain Lievin
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,18 +23,12 @@
   Variable type ID and file extensions
 */
 
-#include <stdio.h>
+#ifndef DISABLE_TI9X
+
 #include <string.h>
 #include "gettext.h"
-
-#include "export.h"
 #include "types89.h"
-#include "printl.h"
-
-#ifdef __WIN32__
-# define strcasecmp _stricmp
-#endif
-
+#include "logging.h"
 
 /*
   Is missing :
@@ -44,7 +38,8 @@
   - Table Setup (.89t)
   - Lab Report (89r)
 */
-const char *TI89_CONST[TI89_MAXTYPES + 1][4] = {
+const char *TI89_CONST[TI89_MAXTYPES + 1][4] = 
+{
   {"EXPR", "89e", "Expression", N_("Expression")},
   {"", "89?", "Unknown", N_("Unknown")},
   {"", "89?", "Unknown", N_("Unknown")},
@@ -100,55 +95,59 @@ const char *TI89_CONST[TI89_MAXTYPES + 1][4] = {
 // Return the type corresponding to the value
 const char *ti89_byte2type(uint8_t data)
 {
-  return (data < TI89_MAXTYPES) ? TI89_CONST[data][0] : "";
+	//if(data >= TI89_MAXTYPES)	tifiles_warning(_("typesxx: unknown type (%02x).\n"), data);
+	return (data < TI89_MAXTYPES) ? TI89_CONST[data][0] : "";
 }
 
 // Return the value corresponding to the type
 uint8_t ti89_type2byte(const char *s)
 {
-  int i;
+	int i;
 
-  for (i = 0; i < TI89_MAXTYPES; i++) {
-    if (!strcmp(TI89_CONST[i][0], s))
-      break;
-  }
+	for (i = 0; i < TI89_MAXTYPES; i++) 
+	{
+		if (!strcmp(TI89_CONST[i][0], s))
+			break;
+	}
 
-  if (i == TI89_MAXTYPES)
-    printl3(1, _("unknown type. It is a bug. Please report this information.\n"));
-
-  return i;
+	//if (i == TI89_MAXTYPES)tifiles_warning(_("ti89_type2byte: unknown type."));
+	return i;
 }
 
 // Return the file extension corresponding to the value
 const char *ti89_byte2fext(uint8_t data)
 {
-  return (data < TI89_MAXTYPES) ? TI89_CONST[data][1] : "89?";
+	//if(data >= TI89_MAXTYPES)	tifiles_warning(_("typesxx: unknown type (%02x).\n"), data);
+	return (data < TI89_MAXTYPES) ? TI89_CONST[data][1] : "89?";
 }
 
 // Return the value corresponding to the file extension
 uint8_t ti89_fext2byte(const char *s)
 {
-  int i;
+	int i;
 
-  for (i = 0; i < TI89_MAXTYPES; i++) {
-    if (!strcasecmp(TI89_CONST[i][1], s))
-      break;
-  }
+	for (i = 0; i < TI89_MAXTYPES; i++) 
+	{
+		if (!g_ascii_strcasecmp(TI89_CONST[i][1], s))
+			break;
+	}
 
-  if (i == TI89_MAXTYPES)
-    printl3(1, _("unknown type. It is a bug. Please report this information.\n"));
-
-  return i;
+	//if (i == TI89_MAXTYPES)tifiles_warning(_("ti89_fext2byte: unknown type."));
+	return i;
 }
 
 // Return the descriptive associated with the vartype
 const char *ti89_byte2desc(uint8_t data)
 {
-  return (data < TI89_MAXTYPES) ? TI89_CONST[data][3] : _("Unknown");
+	//if(data >= TI89_MAXTYPES)	tifiles_warning(_("typesxx: unknown type (%02x).\n"), data);
+	return (data < TI89_MAXTYPES) ? TI89_CONST[data][3] : _("Unknown");
 }
 
 // Return the icon name associated with the vartype
 const char *ti89_byte2icon(uint8_t data)
 {
-  return (data < TI89_MAXTYPES) ? TI89_CONST[data][2] : "Unknown";
+	//if(data >= TI89_MAXTYPES)	tifiles_warning(_("typesxx: unknown type (%02x).\n"), data);
+	return (data < TI89_MAXTYPES) ? TI89_CONST[data][2] : "Unknown";
 }
+
+#endif

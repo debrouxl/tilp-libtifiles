@@ -3,15 +3,11 @@ dnl $Id$
 
 # Init.
 AC_PREREQ(2.57)
-AC_INIT(libTiFiles, 0.6.6, [tilp-users@lists.sourceforge.net])
+AC_INIT(libtifiles2, 0.0.6, [tilp-users@lists.sourceforge.net])
 
-MAJOR_VERSION=0
-MINOR_VERSION=6
-MICRO_VERSION=6
-
-LT_CURRENT=`expr $MINOR_VERSION + $MAJOR_VERSION`
-LT_REVISION=$MICRO_VERSION
-LT_AGE=$MINOR_VERSION
+dnl Release versioning info
+VERSION="0.0.6"
+AC_SUBST(VERSION)
 
 dnl Library version.
 dnl current:revision:age
@@ -20,6 +16,10 @@ dnl  * If you added things to the api, increment 'current',
 dnl    reset 'revision' and increment 'age'.
 dnl  * If you changed/removed things from the api, increment 'current',
 dnl    reset 'revision' and reset 'age'.
+LT_CURRENT=1
+LT_REVISION=0
+LT_AGE=0
+LT_LIBVERSION="$LT_CURRENT:$LT_REVISION:$LT_AGE"
 AC_SUBST(LT_LIBVERSION, $LT_CURRENT:$LT_REVISION:$LT_AGE)
 
 AM_INIT_AUTOMAKE([dist-bzip2])
@@ -28,16 +28,17 @@ AM_MAINTAINER_MODE
 AC_PREFIX_DEFAULT(/usr/local)
 
 dnl Files to configure.
-AC_CONFIG_SRCDIR([src/intrface.c])
+AC_CONFIG_SRCDIR([src/tifiles.c])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([
   Makefile
   build/Makefile
+  docs/Makefile
   intl/Makefile
   po/Makefile.in
   src/Makefile
   tests/Makefile
-  tifiles.pc
+  tifiles2.pc
 ])
 
 # Setup libtool.
@@ -52,10 +53,22 @@ AC_PROG_MAKE_SET
 AC_PROG_LN_S
 AC_ISC_POSIX
 AC_PROG_AWK
+AC_CHECK_PROG(TFDOCGEN, tfdocgen, yes, no)
+AM_CONDITIONAL(USE_DOCGEN, test "$TFDOCGEN" != "no")
 
 # Checks for libraries.
 AM_GNU_GETTEXT
-AM_GNU_GETTEXT_VERSION(0.13.1)
+AM_GNU_GETTEXT_VERSION(0.14.5)
+
+PKG_CHECK_MODULES(GLIB, glib-2.0 >= 2.4.0)
+AC_SUBST(GLIB_CFLAGS)
+AC_SUBST(GLIB_LIBS)
+
+# Check for zlib
+AC_CHECK_HEADER(zlib.h,[AC_CHECK_LIB(z, compress,,)],)
+LIBZ="$LIBS"
+AC_SUBST(LIBZ)
+AM_CONDITIONAL(USE_LIBZ, test "$LIBZ")
 
 # Checks for header files.
 AC_HEADER_STDC
@@ -66,13 +79,9 @@ AC_C_CONST
 AC_TYPE_SIZE_T
 AC_STRUCT_TM
 
-# Checks for architecture features.
-AC_C_BIGENDIAN
-
 # Checks for library functions.
 AC_PROG_GCC_TRADITIONAL
 AC_FUNC_STAT
-AC_FUNC_VPRINTF
 AC_CHECK_FUNCS([memset strcasecmp strchr strdup strrchr])
 
 # Platform specific tests.
@@ -80,7 +89,6 @@ dnl AC_CANONICAL_HOST
 case "$host" in
   *-*-*bsd*)  ARCH="-D__BSD__" ;;
   *-*-mingw*) ARCH="-D__WIN32__ -D__MINGW32__" ;;
-  powerpc-apple-darwin*) ARCH="-D__MACOSX__" ;;
   *)          ARCH="-D__LINUX__" ;;
 esac
 CFLAGS="$CFLAGS $ARCH"
@@ -122,10 +130,12 @@ case $host_os in
   ;;
 esac
 
+AM_CONDITIONAL(OS_WIN32, test "$msnative_struct")
+
 # Check for the new -fvisibility=hidden flag introduced in gcc 4.0
 # Allow to reduce shared library size and avoid symbol clash
 case $host_os in
-*mingw*) 
+*mingw*)
   ;;
 *)
 	if test x$GCC = xyes; then
@@ -149,6 +159,22 @@ case $host_os in
 	fi
 	;;
 esac
+
+# Custom support
+AC_ARG_ENABLE(ti8x,
+  AC_HELP_STRING([--disable-ti8x], [disable TI8x support]),
+  [use_ti8x=$enableval], [use_ti8x=yes])
+if test x$use_ti8x = xno; then
+  AC_DEFINE(DISABLE_TI8X, 1, [Defined to disable the TI8x support])
+fi
+
+# Custom support
+AC_ARG_ENABLE(ti9x,
+  AC_HELP_STRING([--disable-ti9x], [disable TI9x support]),
+  [use_ti9x=$enableval], [use_ti9x=yes])
+if test x$use_ti9x = xno; then
+  AC_DEFINE(DISABLE_TI9X, 1, [Defined to disable the TI9x support])
+fi
 
 # Output.
 AC_OUTPUT

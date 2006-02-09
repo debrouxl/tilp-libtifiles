@@ -1,8 +1,8 @@
 /* Hey EMACS -*- linux-c -*- */
-/* $Id$ */
+/* $Id: fileops.c 913 2005-03-31 09:28:09Z roms $ */
 
 /*  libtifiles - Ti File Format library, a part of the TiLP project
- *  Copyright (C) 1999-2004  Romain Lievin
+ *  Copyright (C) 1999-2005  Romain Lievin
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,234 +20,112 @@
  */
 
 /*
-  This unit contains some miscellaneous but useful functions.
+	This unit contains some miscellaneous but useful functions.
 */
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include "stdints.h"
-#include <sys/stat.h>
-//#include "config.h"
 
-#include "export.h"
-#include "file_int.h"
-#include "printl.h"
+#include "tifiles.h"
+#include "rwfile.h"
 
-#define bswap_16(a) (a >> 8) | (a << 8)
-
-#define bswap_32(x) (x >> 24) | (x & 0xff0000) >> 8 | (x & 0xff00) << 8 | (x & 0xff) << 24
-
-/*
-  Dump into hexadecimal format the content of a buffer
-  - ptr [in]: a pointer on some data to dump
-  - len [in]: the number of bytes to dump
-  - [out]: always 0
- */
-TIEXPORT int TICALL hexdump(uint8_t * ptr, int len)
+/**
+ * tifiles_calc_is_ti8x:
+ * @model: a calculator model.
+ *
+ * Check whether %model is a TI73..TI86 calculator.
+ *
+ * Return value: a boolean value.
+ **/
+TIEXPORT int TICALL tifiles_calc_is_ti8x(CalcModel model)
 {
-  int i;
-
-  for (i = 0; i < len; i++)
-    printl3(0, "%02X ", ptr[i]);
-  printl3(0, "\n");
-
-  return 0;
+  return ((model == CALC_TI73) || (model == CALC_TI82) ||
+	  (model == CALC_TI82) || (model == CALC_TI83) ||
+	  (model == CALC_TI83P) || (model == CALC_TI84P) ||
+	  (model == CALC_TI85) || (model == CALC_TI86) ||
+	  (model == CALC_TI84P_USB)|| (model == CALC_TI89T_USB));
 }
 
-/**********************/
-/* Read/Write strings */
-/**********************/
-
-/*
-   Read a string of 'n' chars from a file
-   - s [out]: a buffer for storing the string
-   - f [in]: a file descriptor
-   - [out]: the result of the operation (0 if failed)
-*/
-int fread_n_chars(FILE * f, int n, char *s)
+/**
+ * tifiles_calc_is_ti9x:
+ * @model: a calculator model.
+ *
+ * Check whether %model is a TI89...V200PLT calculator.
+ *
+ * Return value: a boolean value.
+ **/
+TIEXPORT int TICALL tifiles_calc_is_ti9x(CalcModel model)
 {
-  int i;
-
-  if (s == NULL) {
-    for (i = 0; i < n; i++)
-      fgetc(f);
-  } else {
-    for (i = 0; i < n; i++)
-      s[i] = 0xff & fgetc(f);
-    s[i] = '\0';
-  }
-
-  return 0;
+  return ((model == CALC_TI89) || (model == CALC_TI89T) ||
+	  (model == CALC_TI92) || (model == CALC_TI92P) || (model == CALC_V200) ||
+	  (model == CALC_TI89T_USB));
 }
 
-/*
-  Write a string of 'n' chars (NULL padded) to a file
-  - s [in]: a string
-  - f [in]: a file descriptor
-  - [out]: always different of 0
-*/
-#define FOO
-int fwrite_n_chars(FILE * f, int n, const char *s)
+/**
+ * tifiles_calc_are_compat:
+ * @model: a calculator model.
+ * @ref: a calculator model.
+ *
+ * Check whether %model is compatible (in term of file types) with %ref.
+ * Example: a .92t can be sent to a TI92 (of course) as well as a 
+ * TI89, 92+, V200 and a Titanium.
+ *
+ * Return value: a boolean value.
+ **/
+TIEXPORT int TICALL tifiles_calc_are_compat(CalcModel model, CalcModel ref)
 {
-#ifdef FOO
-  int i;
-  int l = n;
+	if(tifiles_calc_is_ti8x(model) && tifiles_calc_is_ti8x(ref))
+		return !0;
+	else if(tifiles_calc_is_ti9x(model) && tifiles_calc_is_ti9x(ref))
+		return !0;
 
-  l = strlen(s);
-  if (l > n) {
-    printl3(2, "string passed in 'write_string8' is too long (>n chars).\n");
-    printl3(2, "s = <%s>, len(s) = %i\n", s, strlen(s));
-    hexdump((uint8_t *) s, (strlen(s) < 9) ? 9 : strlen(s));
-    abort();
-  }
-
-  for (i = 0; i < l; i++)
-    fputc(s[i], f);
-  for (i = l; i < n; i++) {
-    fputc(0x00, f);
-  }
-#else
-  int i;
-
-  for (i = 0; i < n; i++)
-    fputc((int) s[i], f);
-#endif
-  return 0;
+	return 0;
 }
 
-int fread_8_chars(FILE * f, char *s)
+/**
+ * tifiles_has_folder:
+ * @model: a calculator model.
+ *
+ * Returns TRUE if the calculator supports folders.
+ *
+ * Return value: a boolean value.
+ **/
+TIEXPORT int TICALL tifiles_has_folder(CalcModel calc_type)
 {
-  return fread_n_chars(f, 8, s);
+  return ((calc_type == CALC_TI89) || (calc_type == CALC_TI89T) ||
+	  (calc_type == CALC_TI92) || (calc_type == CALC_TI92P) || 
+	  (calc_type == CALC_V200) || (calc_type == CALC_TI89T_USB));
 }
 
-int fwrite_8_chars(FILE * f, const char *s)
+/**
+ * tifiles_is_flash:
+ * @model: a calculator model.
+ *
+ * Returns TRUE if the calculator model has FLASH technology.
+ *
+ * Return value: a boolean value.
+ **/
+TIEXPORT int TICALL tifiles_is_flash(CalcModel calc_type)
 {
-  return fwrite_n_chars(f, 8, s);
+  return ((calc_type == CALC_TI73) || (calc_type == CALC_TI83P) ||
+	  (calc_type == CALC_TI84P) || (calc_type == CALC_TI84P_USB) || 
+	  (calc_type == CALC_TI89T) || (calc_type == CALC_TI89) || 
+	  (calc_type == CALC_TI92P) ||
+	  (calc_type == CALC_V200) || (calc_type == CALC_TI89T_USB));
 }
 
-int fskip(FILE * f, int n)
-{
-  /*
-     int i;
-     for(i=0; i<n; i++)
-     fgetc(f);
-     return 0;
-   */
-  return fseek(f, n, SEEK_CUR);
-}
 
-/***************************/
-/* Read byte/word/longword */
-/***************************/
-
-int fread_byte(FILE * f, uint8_t * data)
-{
-  if (data != NULL)
-    return fread((void *) data, sizeof(uint8_t), 1, f);
-  else
-    fskip(f, 1);
-
-  return 0;
-}
-
-int fread_word(FILE * f, uint16_t * data)
-{
-  int ret = 0;
-  if (data != NULL)
-  {
-    ret = fread((void *) data, sizeof(uint16_t), 1, f);
-#ifdef WORDS_BIGENDIAN
-    *data = bswap_16(*data);
-#endif /* WORDS_BIGENDIAN */
-  }
-  else
-    fskip(f, 2);
-
-  return ret;
-}
-
-int fread_long(FILE * f, uint32_t * data)
-{
-  int ret = 0;
-  if (data != NULL)
-  {
-    ret = fread((void *) data, sizeof(uint32_t), 1, f);
-#ifdef WORDS_BIGENDIAN
-    *data = bswap_32(*data);
-#endif /* WORDS_BIGENDIAN */
-  }
-  else
-    fskip(f, 4);
-
-  return ret;
-}
-
-/****************************/
-/* Write byte/word/longword */
-/****************************/
-
-int fwrite_byte(FILE * f, uint8_t data)
-{
-  return fwrite(&data, sizeof(uint8_t), 1, f);
-}
-
-int fwrite_word(FILE * f, uint16_t data)
-{
-#ifdef WORDS_BIGENDIAN
-  data = bswap_16(data);
-#endif /* WORDS_BIGENDIAN */
-  return fwrite(&data, sizeof(uint16_t), 1, f);
-}
-
-int fwrite_long(FILE * f, uint32_t data)
-{
-#ifdef WORDS_BIGENDIAN
-  data = bswap_32(data);
-#endif /* WORDS_BIGENDIAN */
-  return fwrite(&data, sizeof(uint32_t), 1, f);
-}
-
-/****************/
-/* Miscelaneous */
-/****************/
-
-/*
-  Retrieve the extension of a file
-  - filename [in]: a filename
-  - ext [out]: the extension
-  - [out]: the extension
-*/
-TIEXPORT char *TICALL tifiles_get_extension(const char *filename)
-{
-  char *d = NULL;
-
-  d = strrchr(filename, '.');
-  if (d == NULL)
-    return NULL;
-
-  return (++d);
-}
-
-TIEXPORT char *TICALL tifiles_dup_extension(const char *filename)
-{
-  char *ext = tifiles_get_extension(filename);
-
-  if (ext != NULL)
-    return strdup(tifiles_get_extension(filename));
-  else
-    return strdup("");
-}
-
-/* 
-   Compute the checksum of a uint8_t array. Returns a uint16_t value.
-   - buffer [in]: an array of uint8_t values
-   - size [in]: the array size
-   - chk [out]: the computed checksum
-   - [out]: the computed checksum
-*/
-TIEXPORT uint16_t TICALL tifiles_compute_checksum(uint8_t * buffer,
-						  int size)
+/**
+ * tifiles_checksum:
+ * @buffer: an array of bytes.
+ * @size: the length of the array.
+ *
+ * Compute the checksum of the array on 'size' bytes.
+ * Returns result as a word.
+ *
+ * Return value: the ckecksum.
+ **/
+TIEXPORT uint16_t TICALL tifiles_checksum(uint8_t * buffer, int size)
 {
   int i;
   uint16_t c = 0;
@@ -261,12 +139,19 @@ TIEXPORT uint16_t TICALL tifiles_compute_checksum(uint8_t * buffer,
   return c;
 }
 
+TIEXPORT int tifiles_hexdump(uint8_t* ptr, unsigned int length)
+{
+	return hexdump(ptr, length);
+}
 
-/*
-  Retrieve the varname component of a full path
-   - full_name [in]: a stringsuch as 'fldname\varname'
-   - [out]: the varname
-*/
+/**
+ * tifiles_get_varname:
+ * @full_name: a calculator path such as 'fldname\varname'.
+ *
+ * Returns the name of the variable.
+ *
+ * Return value: varname as string. It should not be modified.
+ **/
 char *TICALL tifiles_get_varname(const char *full_name)
 {
   char *bs = strchr(full_name, '\\');
@@ -277,12 +162,14 @@ char *TICALL tifiles_get_varname(const char *full_name)
     return (++bs);
 }
 
-
-/*
-  Retrieve the folder component of a full path (fldname\varname).
-   - full_name [in]: a string such as 'fldname\varname'
-   - [out]: the folder name (don't need to be freed)
-*/
+/**
+ * tifiles_get_fldname:
+ * @full_name: a calculator path such as 'fldname\varname'.
+ *
+ * Returns the folder within the variable is located..
+ *
+ * Return value: folder name as string. It should not be modified.
+ **/
 char *TICALL tifiles_get_fldname(const char *full_name)
 {
   static char folder[9];
@@ -291,10 +178,11 @@ char *TICALL tifiles_get_fldname(const char *full_name)
 
   if (bs == NULL)
     strcpy(folder, "");
-  else {
+  else 
+  {
     i = strlen(full_name) - strlen(bs);
     strncpy(folder, full_name, i);
-    folder[i + 1] = '\0';
+    folder[i] = '\0';
   }
   return folder;
 }
@@ -308,35 +196,35 @@ char *TICALL tifiles_get_fldname(const char *full_name)
    - varname [in]: the variable name
    - [out]: aalways 0.
 */
-extern TicalcType tifiles_calc_type;
-int TICALL tifiles_build_fullname(char *full_name,
+/**
+ * tifiles_build_fullname:
+ * @model: a calculator model.
+ * @full_name: the buffer where to store the result.
+ * @fldname: the name of folder or "".
+ * @varname: the name of variable
+ *
+ * Build the complete path from folder name and variable name.
+ * Not all of calculators supports folder.
+ *
+ * Return value: a full path as string like 'fldname\varname'.
+ **/
+char* TICALL tifiles_build_fullname(CalcModel model, char *full_name,
 				  const char *fldname, const char *varname)
 {
-  if (tifiles_has_folder(tifiles_calc_type)) {
-    if (strcmp(fldname, "")) {
+  if (tifiles_has_folder(model)) 
+  {
+    if (strcmp(fldname, "")) 
+	{
       strcpy(full_name, fldname);
       strcat(full_name, "\\");
     }
     strcat(full_name, varname);
-  } else
-    strcpy(full_name, varname);
-
-  return 0;
-}
-
-int is_regfile(const char *filename)
-{
-#ifndef __WIN32__
-  struct stat buf;
-
-  if (stat(filename, &buf) < 0)
-    return 0;
-
-  if (S_ISREG(buf.st_mode))
-    return !0;
+  } 
   else
-    return 0;
-#else
-  return !0;
-#endif
+  {
+	  strncpy(full_name, varname, 8);
+	  full_name[8] = '\0';
+  }
+
+  return full_name;
 }
